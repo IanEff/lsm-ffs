@@ -2,6 +2,10 @@
 package stringabase
 
 import (
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
 	"sync"
 )
 
@@ -11,6 +15,7 @@ import (
 type Store struct {
 	mu       sync.RWMutex
 	database map[string]string
+	path     string
 }
 
 // NewStore returns the pointer to a freshly initialized Store.
@@ -30,9 +35,60 @@ func (s *Store) Get(key string) (string, bool) {
 }
 
 // Set sets the key-value pair in the database. If the key is present, its existing value is clobbered.
-func (s *Store) Set(key, value string) {
+func (s *Store) Set(key, value string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	err := s.logToFile(key, value)
+	if err != nil {
+		return err
+	}
 	s.database[key] = value // clobber existing
+	return nil
+}
+
+func (s *Store) logToFile(key, value string) error {
+	f, err := os.OpenFile(s.path, os.O_APPEND|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	e := Entry{
+		Action: "SET",
+		Key:    key,
+		Value:  value,
+	}
+	err = json.NewEncoder(f).Encode(e)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+type Entry struct {
+	Action, Key, Value string
+}
+
+func Open(path string) (*Store, error) {
+	sb := NewStore()
+	sb.path = path
+	f, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return sb, nil
+		}
+		return &Store{}, err
+	}
+	dec := json.NewDecoder(f)
+	var e Entry
+	for {
+		err := dec.Decode(&e)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return &Store{}, nil
+		}
+		sb.database[e.Key] = e.Value
+	}
+	return sb, nil
 }

@@ -101,7 +101,11 @@ func handleSet(sb *stringabase.Store) http.HandlerFunc {
 		}
 
 		for key, values := range query {
-			sb.Set(key, values[0])
+			err = sb.Set(key, values[0])
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 }

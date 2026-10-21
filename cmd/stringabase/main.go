@@ -20,11 +20,14 @@ import (
 
 func main() {
 	addr := "localhost:4000"
-	sb := stringabase.NewStore()
+	sb, err := stringabase.Open("testfile")
+	if err != nil {
+		os.Exit(1)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	err := server.ListenAndServe(ctx, addr, sb)
+	err = server.ListenAndServe(ctx, addr, sb)
 	if err != nil {
 		log.Fatal(err)
 	}
