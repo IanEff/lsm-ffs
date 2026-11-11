@@ -1,4 +1,4 @@
-# stringabase
+# lsm-ffs
 
 A barebones, concurrency-safe, in-memory string key-value store in Go, served over HTTP.
 
@@ -7,7 +7,7 @@ Structure loosely taken from "Cloud Native Go" by Matthew A. Titmus and "The Dee
 ## Usage
 1. Start the server in one terminal:
 ```bash
-go run ./cmd/stringabase
+go run ./cmd/lsm-ffs
 ```
 
 2. In another terminal, store a value:
@@ -31,7 +31,7 @@ I've organized the Stringabase into three packages, to keep concerns separate:
 ```
 .
 ├── cmd/
-│   └── stringabase/    the composition root, where all defaults are baked in
+│   └── lsm-ffs/        the composition root, where all defaults are baked in
 └── internal/
     ├── server/         the HTTP server and endpoints
     └── stringabase/    the key-value store and its accessors

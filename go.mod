@@ -1,4 +1,4 @@
-module github.com/ianeff/stringabase
+module github.com/ianeff/lsm-ffs
 
 go 1.27.1
 

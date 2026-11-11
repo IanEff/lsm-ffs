@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/ianeff/stringabase/internal/stringabase"
+	"github.com/ianeff/lsm-ffs/internal/stringabase"
 )
 
 // ListenAndServe serves sb out over HTTP at addr on endpoints described in [NewMuxer], until ctx is canceled.

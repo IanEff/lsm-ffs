@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/stringabase/internal/stringabase"
+	"github.com/ianeff/lsm-ffs/internal/stringabase"
 )
 
 func TestSet_SetsTheValueOfSomeKeyInTheMapAndGetGetsIt(t *testing.T) {

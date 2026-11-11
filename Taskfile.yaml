@@ -2,17 +2,17 @@ version: "3"
 
 tasks:
   default:
-    desc: Format, check, then build bin/stringabase
+    desc: Format, check, then build bin/lsm-ffs
     cmds:
       - task: fmt
       - task: ci
       - task: build
 
   run:
-    desc: Format, check, build, then serve stringabase on localhost:4000
+    desc: Format, check, build, then serve lsm-ffs on localhost:4000
     cmds:
       - task: default
-      - ./bin/stringabase
+      - ./bin/lsm-ffs
 
   fmt:
     desc: Rewrite Go files with gofmt
@@ -34,9 +34,9 @@ tasks:
       - go test -race -shuffle=on ./...
 
   build:
-    desc: Build bin/stringabase
+    desc: Build bin/lsm-ffs
     cmds:
-      - go build -o bin/stringabase ./cmd/stringabase
+      - go build -o bin/lsm-ffs ./cmd/lsm-ffs
 
   set:
     desc: "Set on the running server: task set -- somekey=somevalue [k2=v2 ...]"

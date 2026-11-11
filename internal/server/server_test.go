@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/stringabase/internal/server"
-	"github.com/ianeff/stringabase/internal/stringabase"
+	"github.com/ianeff/lsm-ffs/internal/server"
+	"github.com/ianeff/lsm-ffs/internal/stringabase"
 )
 
 func TestGet_ReturnsAValueStoredByASet(t *testing.T) {

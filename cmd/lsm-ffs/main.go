@@ -4,7 +4,7 @@
 // It runs as an HTTP server and presents the Stringabase over a simple HTTP API documented in
 // [server.NewMuxer].
 //
-//	go run ./cmd/stringabase
+//	go run ./cmd/lsm-ffs
 package main
 
 import (
@@ -14,8 +14,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ianeff/stringabase/internal/server"
-	"github.com/ianeff/stringabase/internal/stringabase"
+	"github.com/ianeff/lsm-ffs/internal/server"
+	"github.com/ianeff/lsm-ffs/internal/stringabase"
 )
 
 func main() {
