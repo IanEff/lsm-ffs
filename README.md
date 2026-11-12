@@ -1,6 +1,6 @@
 # lsm-ffs
 
-A barebones, concurrency-safe, in-memory string key-value store in Go, served over HTTP.
+A barebones, concurrency-safe string key-value store in Go, built as a log-structured merge tree and served over HTTP.
 
 Structure loosely taken from "Cloud Native Go" by Matthew A. Titmus and "The Deeper Love of Go" by John Arundel, with a stab at commenting and design from the approach in John Ousterhout's "A Philosophy of Software Design."
 
@@ -26,7 +26,7 @@ You'll get your value back.
 
 ## Layout
 
-I've organized the Stringabase into three packages, to keep concerns separate:
+I've organized lsm-ffs into three packages, to keep concerns separate:
 
 ```
 .
@@ -34,5 +34,5 @@ I've organized the Stringabase into three packages, to keep concerns separate:
 │   └── lsm-ffs/        the composition root, where all defaults are baked in
 └── internal/
     ├── server/         the HTTP server and endpoints
-    └── stringabase/    the key-value store and its accessors
+    └── lsm/            the key-value store: memtable and write-ahead log
 ```

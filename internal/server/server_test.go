@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/ianeff/lsm-ffs/internal/lsm"
 	"github.com/ianeff/lsm-ffs/internal/server"
-	"github.com/ianeff/lsm-ffs/internal/stringabase"
 )
 
 func TestGet_ReturnsAValueStoredByASet(t *testing.T) {
@@ -176,7 +176,7 @@ func TestListenAndServe_ReturnsNilWhenCanceledWhileServing(t *testing.T) {
 	addr := randomLocalAddr(t)
 	errc := make(chan error, 1)
 	go func() {
-		errc <- server.ListenAndServe(ctx, addr, stringabase.NewStore())
+		errc <- server.ListenAndServe(ctx, addr, lsm.New())
 	}()
 	waitUntilServing(t, addr)
 
@@ -194,7 +194,7 @@ func TestListenAndServe_ReturnsNilWhenCanceledWhileServing(t *testing.T) {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	return httptest.NewTestServer(t, server.NewMuxer(stringabase.NewStore()))
+	return httptest.NewTestServer(t, server.NewMuxer(lsm.New()))
 }
 
 func fetch(t *testing.T, ts *httptest.Server, path string) (int, string) {

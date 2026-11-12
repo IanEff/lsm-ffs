@@ -1,4 +1,4 @@
-// Package server exposes [stringabase.Store] as an HTTP API. The endpoints are documented in
+// Package server exposes [lsm.Store] as an HTTP API. The endpoints are documented in
 // [NewMuxer].
 package server
 
@@ -10,21 +10,21 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/ianeff/lsm-ffs/internal/stringabase"
+	"github.com/ianeff/lsm-ffs/internal/lsm"
 )
 
-// ListenAndServe serves sb out over HTTP at addr on endpoints described in [NewMuxer], until ctx is canceled.
-// sb is an initialized [stringabase.Store]. addr takes any form net/http accepts ("localhost:4000").
+// ListenAndServe serves db out over HTTP at addr on endpoints described in [NewMuxer], until ctx is canceled.
+// db is an initialized [lsm.Store]. addr takes any form net/http accepts ("localhost:4000").
 // When ctx is canceled, ListenAndServe drops in-flight requests and returns nil. If it cannot serve, it
 // immediately returns a non-nil error.
-func ListenAndServe(ctx context.Context, addr string, sb *stringabase.Store) error {
+func ListenAndServe(ctx context.Context, addr string, db *lsm.Store) error {
 	srv := &http.Server{
 		Addr:           addr,
 		ReadTimeout:    2 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		IdleTimeout:    60 * time.Second,
 		MaxHeaderBytes: 1 << 20,
-		Handler:        NewMuxer(sb),
+		Handler:        NewMuxer(db),
 	}
 	stop := context.AfterFunc(ctx, func() { srv.Close() })
 	defer stop()
@@ -36,17 +36,17 @@ func ListenAndServe(ctx context.Context, addr string, sb *stringabase.Store) err
 	return err
 }
 
-// NewMuxer returns a handler for the HTTP API, backed by sb.
+// NewMuxer returns a handler for the HTTP API, backed by db.
 // It exposes the following endpoints:
 //
-// /get retrieves a value from sb by key. Returns a StatusOK and the value if the key is present, even if that
+// /get retrieves a value from db by key. Returns a StatusOK and the value if the key is present, even if that
 // value is an empty string.
 // Returns a StatusNotFound if the key is not found.
 // Returns a StatusBadRequest if the request lacks a key.
 //
 //	/get?key=somekey
 //
-// /set stores a key-value string pair in sb. It is idempotent and will replace any existing value for a key.
+// /set stores a key-value string pair in db. It is idempotent and will replace any existing value for a key.
 // One request can set several keys. If a key repeats, the first value wins.
 // Returns a StatusOK with an empty body.
 //
@@ -57,16 +57,16 @@ func ListenAndServe(ctx context.Context, addr string, sb *stringabase.Store) err
 //
 // Note that /set accepts GET here because the spec only specifies a URL. An HTTP GET is supposed to be safe
 // in addition to being idempotent, but this is where we find ourselves.
-func NewMuxer(sb *stringabase.Store) http.Handler {
+func NewMuxer(db *lsm.Store) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/get", handleGet(sb))
-	mux.HandleFunc("/set", handleSet(sb))
+	mux.HandleFunc("/get", handleGet(db))
+	mux.HandleFunc("/set", handleSet(db))
 	return mux
 }
 
 // handleGet returns a handler that retrieves the query parameter named "key" from the URI and attempts to
-// retrieve its value from sb.
-func handleGet(sb *stringabase.Store) http.HandlerFunc {
+// retrieve its value from db.
+func handleGet(db *lsm.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query, err := url.ParseQuery(r.URL.RawQuery)
 		if err != nil {
@@ -79,7 +79,7 @@ func handleGet(sb *stringabase.Store) http.HandlerFunc {
 		}
 		key := query.Get("key")
 
-		value, ok := sb.Get(key)
+		value, ok := db.Get(key)
 		if !ok {
 			http.Error(w, fmt.Sprintf("%q not found", key), http.StatusNotFound)
 			return
@@ -91,8 +91,8 @@ func handleGet(sb *stringabase.Store) http.HandlerFunc {
 }
 
 // handleSet returns a handler that retrieves key-value string pairs from the URI and stores their values in
-// sb.
-func handleSet(sb *stringabase.Store) http.HandlerFunc {
+// db.
+func handleSet(db *lsm.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query, err := url.ParseQuery(r.URL.RawQuery)
 		if err != nil {
@@ -101,7 +101,7 @@ func handleSet(sb *stringabase.Store) http.HandlerFunc {
 		}
 
 		for key, values := range query {
-			err = sb.Set(key, values[0])
+			err = db.Set(key, values[0])
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return

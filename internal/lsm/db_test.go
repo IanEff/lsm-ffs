@@ -1,15 +1,15 @@
-package stringabase_test
+package lsm_test
 
 import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/ianeff/lsm-ffs/internal/stringabase"
+	"github.com/ianeff/lsm-ffs/internal/lsm"
 )
 
 func TestSet_SetsTheValueOfSomeKeyInTheMapAndGetGetsIt(t *testing.T) {
 	t.Parallel()
-	db := newTestStore(t)
+	db := newTestDB(t)
 	want := "1"
 
 	db.Set("a", "1")
@@ -24,7 +24,7 @@ func TestSet_SetsTheValueOfSomeKeyInTheMapAndGetGetsIt(t *testing.T) {
 
 func TestSet_LastOneWinsAndClobbers(t *testing.T) {
 	t.Parallel()
-	db := newTestStore(t)
+	db := newTestDB(t)
 	want := "2"
 
 	db.Set("a", "1")
@@ -41,7 +41,7 @@ func TestSet_LastOneWinsAndClobbers(t *testing.T) {
 
 func TestGet_DistinguishesAnEmptyValueFromAMissingKey(t *testing.T) {
 	t.Parallel()
-	db := newTestStore(t)
+	db := newTestDB(t)
 	wantA := ""
 	wantB := ""
 
@@ -63,12 +63,12 @@ func TestGet_DistinguishesAnEmptyValueFromAMissingKey(t *testing.T) {
 	}
 }
 
-// TestSet_IsRaceFree exercises the store with a concurrent reader and writer so the race detector can catch
+// TestSet_IsRaceFree exercises the DB with a concurrent reader and writer so the race detector can catch
 // unsynchronized access. The channel is established so we wait on the writer to finish before exiting the
 // test.
 func TestSet_IsRaceFree(t *testing.T) {
 	t.Parallel()
-	db := newTestStore(t)
+	db := newTestDB(t)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -83,7 +83,7 @@ func TestSet_IsRaceFree(t *testing.T) {
 	<-done
 }
 
-func newTestStore(t *testing.T) *stringabase.Store {
+func newTestDB(t *testing.T) *lsm.Store {
 	t.Helper()
-	return stringabase.NewStore()
+	return lsm.New()
 }
