@@ -9,20 +9,6 @@ import (
 	"sync"
 )
 
-const (
-	memtableMaxBytes = 16
-)
-
-type Memtable struct {
-	data map[string]entry
-	size int
-}
-
-type entry struct {
-	value     string
-	tombstone bool
-}
-
 // Store is a concurrency-safe string key-value store. It is accessed through Get(), and Set(). Set() will
 // clobber existing stored values and allows for empty string values.
 // The zero value is not usable: build with [Open] or [New].
@@ -34,9 +20,9 @@ type Store struct {
 }
 
 // New returns the pointer to a freshly initialized DB.
-func New() *Store {
+func NewStore() *Store {
 	return &Store{
-		memtable: make(map[string]string, memtableMaxBytes),
+		memtable: *NewMemtable(16),
 	}
 }
 
