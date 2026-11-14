@@ -1,6 +1,10 @@
 package lsm
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/ianeff/lsm-ffs/internal/wal"
+)
 
 const (
 	defaultMemtableBytes = 16
@@ -28,11 +32,19 @@ func (m *Memtable) put(key string, e entry) {
 	m.data[key] = e
 }
 
-func (m *Memtable) apply(rec record) error {
+// get returns the raw entry for key, tombstone included, so the caller can tell "deleted here" from "not
+// here".
+func (m *Memtable) get(key string) (entry, bool) {
+	e, ok := m.data[key]
+	return e, ok
+}
+
+// apply replays one write-ahead log record into the memtable.
+func (m *Memtable) apply(rec wal.Record) error {
 	switch rec.Op {
-	case opSet:
+	case wal.OpSet:
 		m.put(rec.Key, entry{value: rec.Value})
-	case opDelete:
+	case wal.OpDelete:
 		m.put(rec.Key, entry{tombstone: true})
 	default:
 		return fmt.Errorf("unknown op %q for key %q", rec.Op, rec.Key)

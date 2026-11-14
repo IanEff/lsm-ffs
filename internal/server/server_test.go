@@ -176,7 +176,7 @@ func TestListenAndServe_ReturnsNilWhenCanceledWhileServing(t *testing.T) {
 	addr := randomLocalAddr(t)
 	errc := make(chan error, 1)
 	go func() {
-		errc <- server.ListenAndServe(ctx, addr, lsm.New())
+		errc <- server.ListenAndServe(ctx, addr, newTestStore(t))
 	}()
 	waitUntilServing(t, addr)
 
@@ -194,7 +194,7 @@ func TestListenAndServe_ReturnsNilWhenCanceledWhileServing(t *testing.T) {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	return httptest.NewTestServer(t, server.NewMuxer(lsm.New()))
+	return httptest.NewTestServer(t, server.NewMuxer(newTestStore(t)))
 }
 
 func fetch(t *testing.T, ts *httptest.Server, path string) (int, string) {
@@ -236,4 +236,18 @@ func waitUntilServing(t *testing.T, addr string) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func newTestStore(t *testing.T) *lsm.Store {
+	t.Helper()
+	db, err := lsm.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return db
 }

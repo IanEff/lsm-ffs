@@ -2,84 +2,47 @@
 package lsm
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/ianeff/lsm-ffs/internal/wal"
 )
+
+var errClosed = errors.New("lsm: store is closed")
 
 // Store is a concurrency-safe string key-value store. It is accessed through Get(), and Set(). Set() will
 // clobber existing stored values and allows for empty string values.
-// The zero value is not usable: build with [Open] or [New].
+// The zero value is not usable: build with [Open].
 type Store struct {
 	mu       sync.RWMutex
 	memtable *Memtable
 	segments []*Memtable
-	wal      *wal
+	wal      *wal.WAL
 }
 
-// New returns the pointer to a freshly initialized DB.
-func NewStore() *Store {
-	return &Store{
-		memtable: NewMemtable(16),
-	}
-}
-
-// Get returns a key's value from the DB. If the key isn't present, it returns an empty string and false.
-func (db *Store) Get(key string) (string, bool) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
-	// TODO: better implement this!
-	return "", true
-}
-
-// Set sets the key-value pair in the DB. If the key is present, its existing value is clobbered.
-func (db *Store) Set(key, value string) error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-
-	err := db.wal.append(record{Op: opSet, Key: key, Value: value})
-	if err != nil {
-		return err
-	}
-
-	if !db.memtable.full() {
-		db.memtable.put(key, entry{value: value})
-	} else {
-		// TODO: better do something!
-	}
-	return nil
-}
-
-func (db *Store) Close() error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	return db.wal.Close()
-}
-
+// Open opens the store in dir, creating dir if needed, and replays its write-ahead log.
 func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(dir, "wal.log")
 
-	records, err := replay(path)
+	records, err := wal.Replay(path)
 	if err != nil {
 		return nil, err
 	}
 
 	mem := NewMemtable(defaultMemtableBytes)
-	for _, record := range records {
-		err := mem.apply(record)
+	for _, rec := range records {
+		err := mem.apply(rec)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	w, err := openWAL(path)
+	w, err := wal.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -87,27 +50,50 @@ func Open(dir string) (*Store, error) {
 	return &Store{memtable: mem, wal: w}, nil
 }
 
-func replay(path string) ([]record, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil // fresh file
-		}
-		return nil, err
-	}
-	defer f.Close()
+// Get returns a key's value from the DB. If the key isn't present, it returns an empty string and false.
+func (db *Store) Get(key string) (string, bool) {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
 
-	var records []record
-	dec := json.NewDecoder(f)
-	for {
-		var rec record
-		err := dec.Decode(&rec)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return records, nil
-			}
-			return nil, err
-		}
-		records = append(records, rec)
+	e, ok := db.memtable.get(key)
+	if !ok {
+		return "", false // TODO: check segments, newest first
 	}
+	if e.tombstone {
+		return "", false // deleted: stop looking, even if a segment has it
+	}
+	return e.value, true
+}
+
+// Set sets the key-value pair in the DB. If the key is present, its existing value is clobbered.
+func (db *Store) Set(key, value string) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	if db.wal == nil {
+		return errClosed
+	}
+	err := db.wal.Append(wal.Record{Op: wal.OpSet, Key: key, Value: value})
+	if err != nil {
+		return err
+	}
+
+	db.memtable.put(key, entry{value: value})
+	if db.memtable.full() {
+		// TODO: flush the memtable to a segment
+	}
+	return nil
+}
+
+// Close closes the store's write-ahead log. It's safe to call more than once; Set fails after the first.
+func (db *Store) Close() error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	if db.wal == nil {
+		return nil
+	}
+	err := db.wal.Close()
+	db.wal = nil
+	return err
 }
