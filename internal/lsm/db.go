@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -14,15 +15,15 @@ import (
 // The zero value is not usable: build with [Open] or [New].
 type Store struct {
 	mu       sync.RWMutex
-	memtable Memtable
-	segments []Memtable
-	wal      wal
+	memtable *Memtable
+	segments []*Memtable
+	wal      *wal
 }
 
 // New returns the pointer to a freshly initialized DB.
 func NewStore() *Store {
 	return &Store{
-		memtable: *NewMemtable(16),
+		memtable: NewMemtable(16),
 	}
 }
 
@@ -31,8 +32,8 @@ func (db *Store) Get(key string) (string, bool) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
-	value, ok := db.memtable[key]
-	return value, ok
+	// TODO: better implement this!
+	return "", true
 }
 
 // Set sets the key-value pair in the DB. If the key is present, its existing value is clobbered.
@@ -44,31 +45,69 @@ func (db *Store) Set(key, value string) error {
 	if err != nil {
 		return err
 	}
-	db.memtable[key] = value // clobber existing
+
+	if !db.memtable.full() {
+		db.memtable.put(key, entry{value: value})
+	} else {
+		// TODO: better do something!
+	}
 	return nil
 }
 
-func Open(path string) (*Store, error) {
-	db := New()
-	db.wal.path = path
+func (db *Store) Close() error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	return db.wal.Close()
+}
+
+func Open(dir string) (*Store, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(dir, "wal.log")
+
+	records, err := replay(path)
+	if err != nil {
+		return nil, err
+	}
+
+	mem := NewMemtable(defaultMemtableBytes)
+	for _, record := range records {
+		err := mem.apply(record)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	w, err := openWAL(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Store{memtable: mem, wal: w}, nil
+}
+
+func replay(path string) ([]record, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return db, nil
+			return nil, nil // fresh file
 		}
-		return &Store{}, err
+		return nil, err
 	}
+	defer f.Close()
+
+	var records []record
 	dec := json.NewDecoder(f)
-	var rec record
 	for {
+		var rec record
 		err := dec.Decode(&rec)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				break
+				return records, nil
 			}
-			return &Store{}, nil
+			return nil, err
 		}
-		db.memtable[rec.Key] = rec.Value
+		records = append(records, rec)
 	}
-	return db, nil
 }
