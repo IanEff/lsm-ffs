@@ -8,8 +8,12 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/ianeff/lsm-ffs/internal/wal"
 	"github.com/ianeff/lsm-ffs/internal/memtable"
+	"github.com/ianeff/lsm-ffs/internal/wal"
+)
+
+const (
+	memtableBytes = 16
 )
 
 var errClosed = errors.New("lsm: store is closed")
@@ -36,10 +40,9 @@ func Open(dir string) (*Store, error) {
 		return nil, err
 	}
 
-	mem := memtable.NewMemtable(memtable.defaultMemtableBytes)
+	mem := memtable.New()
 	for _, rec := range records {
-		err := mem.apply(rec)
-		if err != nil {
+		if err := mem.Apply(rec); err != nil {
 			return nil, err
 		}
 	}
@@ -58,14 +61,14 @@ func (db *Store) Get(key []byte) ([]byte, bool) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
-	e, ok := db.memtable.get(key)
+	e, ok := db.memtable.Get(key)
 	if !ok {
 		return nil, false // TODO: check segments, newest first
 	}
-	if e.tombstone {
+	if e.Tombstone {
 		return nil, false // deleted: stop looking, even if a segment has it
 	}
-	return bytes.Clone(e.value), true
+	return bytes.Clone(e.Value), true
 }
 
 // Set stores a copy of key and value, replacing any existing value for key.
@@ -82,8 +85,8 @@ func (db *Store) Set(key, value []byte) error {
 		return err
 	}
 
-	db.memtable.put(key, entry{value: value})
-	if db.memtable.full() {
+	db.memtable.Put(key, memtable.Entry{Value: value})
+	if db.memtable.ApproximateSize() > memtableBytes {
 		// TODO: flush the memtable to a segment
 	}
 	return nil

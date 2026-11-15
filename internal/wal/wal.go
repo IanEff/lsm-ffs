@@ -78,7 +78,7 @@ func Replay(path string) ([]Record, error) {
 			if errors.Is(err, io.EOF) {
 				return records, nil
 			}
-			return nil, err
+			panic(err) // TODO: Panicking on torn page for now.
 		}
 		records = append(records, rec)
 	}

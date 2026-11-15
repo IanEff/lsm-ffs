@@ -3,6 +3,7 @@ package lsm_test
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -240,6 +241,63 @@ func TestOpen_RestoresEmptyValue(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("wrong value after reopen (-want +got):\n%s", cmp.Diff("", string(got)))
+	}
+}
+
+func TestOpen_RestoresValuesAcrossSeveralReopens(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	want := map[string]string{"a": "1", "b": "2"}
+
+	db := openStore(t, dir)
+	mustSet(t, db, "a", "1")
+	mustClose(t, db)
+
+	db = openStore(t, dir)
+	mustSet(t, db, "b", "2")
+	mustClose(t, db)
+
+	db = openStore(t, dir)
+	got := make(map[string]string)
+	for k := range want {
+		v, ok := db.Get([]byte(k))
+		if !ok {
+			t.Errorf("key %q missing after second reopen", k)
+			continue
+		}
+		got[k] = string(v)
+	}
+	if !cmp.Equal(want, got) {
+		t.Errorf("wrong values after second reopen (-want +got):\n%s", cmp.Diff(want, got))
+	}
+}
+
+// TestOpen_PanicsOnTornWALRecord simulates a crash during Set by leaving half a record at the end of the
+// log. It names the log file, so it changes if the store's on-disk layout does.
+func TestOpen_PanicsOnTornWALRecord(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	db := openStore(t, dir)
+	mustSet(t, db, "a", "1")
+	mustClose(t, db)
+
+	path := filepath.Join(dir, "wal.log")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(data, data[:len(data)/2]...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Error("want panic opening a store with a torn WAL record, got none")
+		}
+	}()
+	db, err = lsm.Open(dir)
+	if err == nil {
+		db.Close()
 	}
 }
 

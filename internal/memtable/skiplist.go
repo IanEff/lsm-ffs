@@ -7,21 +7,27 @@ import (
 )
 
 const (
+	// MaxHeight caps a node's tower; 16 levels suit about 65,536 keys at p = 1/2.
 	MaxHeight = 16
-	PValue    = 0.5 // MaxHeight = log1/p(N) | p= 1/2
+	// PValue is the chance a node grows one more level.
+	PValue = 0.5
 )
 
+// probabilities[h] is the chance, scaled to a uint32, that a node is taller than h.
 var probabilities [MaxHeight]uint32
 
+// node is one key in the list. tower[i] is the next node at level i.
 type node struct {
 	key   []byte
-	entry entry
+	entry Entry
 	tower [MaxHeight]*node
 }
 
+// SkipList maps byte keys to entries, sorted by bytes.Compare. It stores keys as given, without copying
+// them.
 type SkipList struct {
-	head   *node
-	height int
+	head   *node // sentinel before the first key; holds no key
+	height int   // number of levels in use
 }
 
 func NewSkipList() *SkipList {
@@ -31,6 +37,8 @@ func NewSkipList() *SkipList {
 	return sl
 }
 
+// search returns key's node, or nil, plus the last node before key at each level, so Insert can link a
+// new node in after them.
 func (sl *SkipList) search(key []byte) (*node, [MaxHeight]*node) {
 	var next *node
 	var journey [MaxHeight]*node
@@ -52,15 +60,17 @@ func (sl *SkipList) search(key []byte) (*node, [MaxHeight]*node) {
 	return nil, journey
 }
 
-func (sl *SkipList) Find(key []byte) (entry, bool) {
+// Find returns key's entry, and false if key is absent.
+func (sl *SkipList) Find(key []byte) (Entry, bool) {
 	found, _ := sl.search(key)
 	if found == nil {
-		return entry{}, false
+		return Entry{}, false
 	}
 	return found.entry, true
 }
 
-func (sl *SkipList) Insert(key []byte, e entry) {
+// Insert stores e under key, replacing any earlier entry.
+func (sl *SkipList) Insert(key []byte, e Entry) {
 	found, journey := sl.search(key)
 
 	if found != nil {
@@ -125,6 +135,8 @@ func init() {
 	}
 }
 
+// randomHeight picks a new node's height: it starts at 1, and each further level is added with
+// probability PValue.
 func randomHeight() int {
 	seed := rand.Uint32()
 

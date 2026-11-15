@@ -1,3 +1,4 @@
+// Package memtable holds an LSM store's recent writes in memory, sorted by key.
 package memtable
 
 import (
@@ -7,62 +8,59 @@ import (
 	"github.com/ianeff/lsm-ffs/internal/wal"
 )
 
-const (
-	defaultMemtableBytes = 16
-)
-
-// Memtable is
+// Memtable maps byte keys to entries in key order. Deleting a key means putting a tombstone; nothing is
+// ever removed. Not safe for concurrent use.
 type Memtable struct {
-	// Strings adapt byte keys to the map; they are not a text encoding.
-	// TODO: replace this with a skiplist or something legible and ordered.
 	data     *SkipList
-	bytes    int
+	bytes    int // total length of keys and values held
 	maxBytes int
 }
 
-func NewMemtable(maxBytes int) *Memtable {
-	return &Memtable{data: NewSkipList(), maxBytes: maxBytes}
+// New returns an empty memtable.
+func New() *Memtable {
+	return &Memtable{data: NewSkipList()}
 }
 
-// put copies key and value so callers can reuse their buffers after insertion.
-func (m *Memtable) put(key []byte, e entry) {
-	// Let's update the byte count
+// Put stores e under key, replacing any earlier entry. It copies key and e.Value, so the caller may reuse
+// both.
+func (m *Memtable) Put(key []byte, e Entry) {
 	if old, ok := m.data.Find(key); ok {
-		m.bytes -= len(old.value)
+		m.bytes -= len(old.Value)
 	} else {
 		m.bytes += len(key)
 	}
-	m.bytes += len(e.value)
+	m.bytes += len(e.Value)
 
-	// Clone values, then ordered insert into SkipList
-	e.value = bytes.Clone(e.value)
+	e.Value = bytes.Clone(e.Value)
 	m.data.Insert(bytes.Clone(key), e)
 }
 
-// get returns the raw entry for key, tombstone included, so the caller can tell "deleted here" from "not
-// here".
-func (m *Memtable) get(key []byte) (entry, bool) {
+// Get returns key's entry, tombstone included, so the caller can tell "deleted here" from "not here".
+// Don't modify the returned Value; the memtable still holds it.
+func (m *Memtable) Get(key []byte) (Entry, bool) {
 	return m.data.Find(key)
 }
 
-// apply replays one write-ahead log record into the memtable.
-func (m *Memtable) apply(rec wal.Record) error {
+// Apply replays one WAL record into the memtable. It returns an error for an unknown op.
+func (m *Memtable) Apply(rec wal.Record) error {
 	switch rec.Op {
 	case wal.OpSet:
-		m.put(rec.Key, entry{value: rec.Value})
+		m.Put(rec.Key, Entry{Value: rec.Value})
 	case wal.OpDelete:
-		m.put(rec.Key, entry{tombstone: true})
+		m.Put(rec.Key, Entry{Tombstone: true})
 	default:
 		return fmt.Errorf("unknown op %q for key %q", rec.Op, rec.Key)
 	}
 	return nil
 }
 
-func (m *Memtable) full() bool {
-	return m.bytes >= m.maxBytes
+// ApproximateSize returns the total length of keys and values held.
+func (m *Memtable) ApproximateSize() int {
+	return m.bytes
 }
 
-type entry struct {
-	value     []byte
-	tombstone bool
+// Entry is what a [Memtable] holds for a key: a value, or a tombstone marking the key deleted.
+type Entry struct {
+	Value     []byte
+	Tombstone bool
 }
