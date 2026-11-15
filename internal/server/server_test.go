@@ -144,6 +144,37 @@ func TestGet_ReturnsAValueStoredWithURLEncodedKeyAndValue(t *testing.T) {
 	}
 }
 
+func TestGet_ReturnsRawBytesStoredWithURLEncodedBinaryKeyAndValue(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+	want := []byte{0xff, 0x00, 0xfe, '+', '&'}
+
+	status, _ := fetch(t, ts, "/set?%FF%00%FE=%FF%00%FE%2B%26")
+	if status != http.StatusOK {
+		t.Fatalf("want /set status %d, got %d", http.StatusOK, status)
+	}
+
+	resp, err := ts.Client().Get(ts.URL + "/get?key=%FF%00%FE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want /get status %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+	if gotType := resp.Header.Get("Content-Type"); gotType != "application/octet-stream" {
+		t.Errorf("want Content-Type application/octet-stream, got %q", gotType)
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("wrong raw value for URL-encoded binary key and value (-want +got):\n%s", diff)
+	}
+}
+
 func TestSet_RejectsAndDoesNotStoreOnBadQuery(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)

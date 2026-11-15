@@ -1,8 +1,10 @@
 # lsm-ffs
 
-A barebones, concurrency-safe string key-value store in Go, built as a log-structured merge tree and served over HTTP.
+A barebones, concurrency-safe byte key-value store in Go, built as a log-structured merge tree and served over HTTP.
 
-Structure loosely taken from "Cloud Native Go" by Matthew A. Titmus and "The Deeper Love of Go" by John Arundel, with a stab at commenting and design from the approach in John Ousterhout's "A Philosophy of Software Design."
+The store accepts byte slices and copies keys and values on writes; reads return a copy. The current map-backed memtable uses strings only as an internal adapter for byte keys, ready to be replaced by a skiplist. HTTP keys and values are URL-encoded, and successful reads return raw bytes as `application/octet-stream`.
+
+WAL records are JSON with base64-encoded byte keys and values. Logs from the earlier string-based format require explicit migration; they cannot safely be read as the new format. Use a fresh data directory for disposable development data.
 
 ## Usage
 1. Start the server in one terminal:

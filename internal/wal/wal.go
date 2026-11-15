@@ -18,10 +18,12 @@ const (
 
 // Record is one entry in the write-ahead log.
 type Record struct {
-	Op, Key, Value string
+	Op         string
+	Key, Value []byte
 }
 
-// WAL is an open write-ahead log. Records are JSON-encoded, one per line.
+// WAL is an open write-ahead log. Records are JSON-encoded, one per line,
+// with byte keys and values encoded as base64 strings (nil slices as null).
 // Build with [Open]; the zero value is not usable.
 type WAL struct {
 	f  *os.File

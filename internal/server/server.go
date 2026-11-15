@@ -39,21 +39,21 @@ func ListenAndServe(ctx context.Context, addr string, db *lsm.Store) error {
 // NewMuxer returns a handler for the HTTP API, backed by db.
 // It exposes the following endpoints:
 //
-// /get retrieves a value from db by key. Returns a StatusOK and the value if the key is present, even if that
-// value is an empty string.
+// /get retrieves a value from db by key. Returns a StatusOK and the raw value bytes with Content-Type
+// application/octet-stream if the key is present, even if the value is empty.
 // Returns a StatusNotFound if the key is not found.
 // Returns a StatusBadRequest if the request lacks a key.
 //
 //	/get?key=somekey
 //
-// /set stores a key-value string pair in db. It is idempotent and will replace any existing value for a key.
+// /set stores a key-value byte pair in db. It is idempotent and will replace any existing value for a key.
 // One request can set several keys. If a key repeats, the first value wins.
 // Returns a StatusOK with an empty body.
 //
 //	/set?somekey=somevalue&otherkey=someothervalue
 //
-// Keys and values must be URL-encoded. Stores nothing and returns StatusBadRequest if the query can't be
-// decoded.
+// Keys and values are arbitrary bytes, including NUL and invalid UTF-8, and must be URL-encoded.
+// Stores nothing and returns StatusBadRequest if the query can't be decoded.
 //
 // Note that /set accepts GET here because the spec only specifies a URL. An HTTP GET is supposed to be safe
 // in addition to being idempotent, but this is where we find ourselves.
@@ -79,19 +79,18 @@ func handleGet(db *lsm.Store) http.HandlerFunc {
 		}
 		key := query.Get("key")
 
-		value, ok := db.Get(key)
+		value, ok := db.Get([]byte(key))
 		if !ok {
 			http.Error(w, fmt.Sprintf("%q not found", key), http.StatusNotFound)
 			return
 		}
 
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprint(w, value)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Write(value)
 	}
 }
 
-// handleSet returns a handler that retrieves key-value string pairs from the URI and stores their values in
-// db.
+// handleSet returns a handler that decodes key-value byte pairs from the URI and stores their values in db.
 func handleSet(db *lsm.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query, err := url.ParseQuery(r.URL.RawQuery)
@@ -101,7 +100,7 @@ func handleSet(db *lsm.Store) http.HandlerFunc {
 		}
 
 		for key, values := range query {
-			err = db.Set(key, values[0])
+			err = db.Set([]byte(key), []byte(values[0]))
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
