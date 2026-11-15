@@ -1,4 +1,4 @@
-package lsm
+package memtable
 
 import (
 	"bytes"
@@ -11,39 +11,38 @@ const (
 	defaultMemtableBytes = 16
 )
 
-// Memtable is 
+// Memtable is
 type Memtable struct {
 	// Strings adapt byte keys to the map; they are not a text encoding.
 	// TODO: replace this with a skiplist or something legible and ordered.
-	data     map[string]entry
+	data     *SkipList
 	bytes    int
 	maxBytes int
 }
 
 func NewMemtable(maxBytes int) *Memtable {
-	return &Memtable{data: make(map[string]entry), maxBytes: maxBytes}
+	return &Memtable{data: NewSkipList(), maxBytes: maxBytes}
 }
 
 // put copies key and value so callers can reuse their buffers after insertion.
 func (m *Memtable) put(key []byte, e entry) {
-	mapKey := string(key)
 	// Let's update the byte count
-	if old, ok := m.data[mapKey]; ok {
+	if old, ok := m.data.Find(key); ok {
 		m.bytes -= len(old.value)
 	} else {
 		m.bytes += len(key)
 	}
 	m.bytes += len(e.value)
-	// ordered insert needs to go here
+
+	// Clone values, then ordered insert into SkipList
 	e.value = bytes.Clone(e.value)
-	m.data[mapKey] = e
+	m.data.Insert(bytes.Clone(key), e)
 }
 
 // get returns the raw entry for key, tombstone included, so the caller can tell "deleted here" from "not
 // here".
 func (m *Memtable) get(key []byte) (entry, bool) {
-	e, ok := m.data[string(key)]
-	return e, ok
+	return m.data.Find(key)
 }
 
 // apply replays one write-ahead log record into the memtable.

@@ -1,6 +1,7 @@
 # lsm-ffs
 
-A barebones, concurrency-safe byte key-value store in Go, built as a log-structured merge tree and served over HTTP.
+The outlines of a log-structured merge tree backed key-value store, based
+off of my initial [stringabase](https://github.com/IanEff/stringabase) Recurse Center application... uh... application.
 
 The store accepts byte slices and copies keys and values on writes; reads return a copy. The current map-backed memtable uses strings only as an internal adapter for byte keys, ready to be replaced by a skiplist. HTTP keys and values are URL-encoded, and successful reads return raw bytes as `application/octet-stream`.
 

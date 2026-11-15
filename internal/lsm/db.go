@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/ianeff/lsm-ffs/internal/wal"
+	"github.com/ianeff/lsm-ffs/internal/memtable"
 )
 
 var errClosed = errors.New("lsm: store is closed")
@@ -18,8 +19,8 @@ var errClosed = errors.New("lsm: store is closed")
 // The zero value is not usable: build with [Open].
 type Store struct {
 	mu       sync.RWMutex
-	memtable *Memtable
-	segments []*Memtable
+	memtable *memtable.Memtable
+	segments []*memtable.Memtable
 	wal      *wal.WAL
 }
 
@@ -35,7 +36,7 @@ func Open(dir string) (*Store, error) {
 		return nil, err
 	}
 
-	mem := NewMemtable(defaultMemtableBytes)
+	mem := memtable.NewMemtable(memtable.defaultMemtableBytes)
 	for _, rec := range records {
 		err := mem.apply(rec)
 		if err != nil {

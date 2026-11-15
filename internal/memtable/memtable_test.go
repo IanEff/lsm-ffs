@@ -1,4 +1,4 @@
-package lsm
+package memtable_test
 
 import (
 	"bytes"
