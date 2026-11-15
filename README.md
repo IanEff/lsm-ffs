@@ -3,7 +3,7 @@
 The outlines of a log-structured merge tree backed key-value store, based
 off of my initial [stringabase](https://github.com/IanEff/stringabase) Recurse Center application... uh... application.
 
-The store accepts byte slices and copies keys and values on writes; reads return a copy. The current map-backed memtable uses strings only as an internal adapter for byte keys, ready to be replaced by a skiplist. HTTP keys and values are URL-encoded, and successful reads return raw bytes as `application/octet-stream`.
+A write-ahead log and a skiplist memtable, and that's the whole tree so far: no flush, no segments, no compaction. The shape is borrowed from Alex Chi Z's Rust [Mini-LSM course](https://skyzh.github.io/mini-lsm/week1-01-memtable.html#task-2-a-single-memtable-in-the-engine). Keys and values are bytes, copied in and copied out, and an empty value counts as present. Over HTTP they're URL-encoded, and reads come back raw as `application/octet-stream`.
 
 WAL records are JSON with base64-encoded byte keys and values. Logs from the earlier string-based format require explicit migration; they cannot safely be read as the new format. Use a fresh data directory for disposable development data.
 
