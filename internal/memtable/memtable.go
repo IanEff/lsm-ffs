@@ -11,9 +11,9 @@ import (
 // Memtable maps byte keys to entries in key order. Deleting a key means putting a tombstone; nothing is
 // ever removed. Not safe for concurrent use.
 type Memtable struct {
-	data     *SkipList
-	bytes    int // total length of keys and values held
-	maxBytes int
+	data      *SkipList
+	bytesUsed int // total length of keys and values held
+	maxBytes  int
 }
 
 // New returns an empty memtable.
@@ -25,11 +25,11 @@ func New() *Memtable {
 // both.
 func (m *Memtable) Put(key []byte, e Entry) {
 	if old, ok := m.data.Find(key); ok {
-		m.bytes -= len(old.Value)
+		m.bytesUsed -= len(old.Value)
 	} else {
-		m.bytes += len(key)
+		m.bytesUsed += len(key)
 	}
-	m.bytes += len(e.Value)
+	m.bytesUsed += len(e.Value)
 
 	e.Value = bytes.Clone(e.Value)
 	m.data.Insert(bytes.Clone(key), e)
@@ -56,7 +56,7 @@ func (m *Memtable) Apply(rec wal.Record) error {
 
 // ApproximateSize returns the total length of keys and values held.
 func (m *Memtable) ApproximateSize() int {
-	return m.bytes
+	return m.bytesUsed
 }
 
 // Entry is what a [Memtable] holds for a key: a value, or a tombstone marking the key deleted.

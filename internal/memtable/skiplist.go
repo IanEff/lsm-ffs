@@ -105,24 +105,21 @@ func (sl *SkipList) Delete(key []byte) bool {
 		return false
 	}
 
-	for level := 0; level <= sl.height; level++ {
+	for level := 0; level < sl.height; level++ {
 		if journey[level].tower[level] != found {
 			break
 		}
 		journey[level].tower[level] = found.tower[level]
 		found.tower[level] = nil
 	}
-	found = nil
 	sl.shrink()
 
 	return true
 }
 
 func (sl *SkipList) shrink() {
-	for level := sl.height - 1; level >= 0; level-- {
-		if sl.head.tower[level] == nil {
-			sl.height--
-		}
+	for sl.height > 1 && sl.head.tower[sl.height-1] == nil {
+		sl.height--
 	}
 }
 
