@@ -24,7 +24,7 @@ var errClosed = errors.New("lsm: store is closed")
 type Store struct {
 	mu       sync.RWMutex
 	memtable *memtable.Memtable
-	segments []*memtable.Memtable
+	queue    []*memtable.Memtable
 	wal      *wal.WAL
 }
 
@@ -40,7 +40,7 @@ func Open(dir string) (*Store, error) {
 		return nil, err
 	}
 
-	mem := memtable.New()
+	mem := memtable.New(memtableBytes)
 	for _, rec := range records {
 		if err := mem.Apply(rec); err != nil {
 			return nil, err
@@ -84,12 +84,17 @@ func (db *Store) Set(key, value []byte) error {
 	if err != nil {
 		return err
 	}
-
-	db.memtable.Put(key, memtable.Entry{Value: value})
-	if db.memtable.ApproximateSize() > memtableBytes {
-		// TODO: flush the memtable to a segment
+	if !db.memtable.HasRoomForWrite(key, value) {
+		db.rotateMemtables()
 	}
+	db.memtable.Put(key, memtable.Entry{Value: value})
 	return nil
+}
+
+func (db *Store) rotateMemtables() *memtable.Memtable {
+	db.queue = append(db.queue, db.memtable)
+	db.memtable = memtable.New(memtableBytes)
+	return db.memtable
 }
 
 // Close closes the store's write-ahead log. It's safe to call more than once; Set fails after the first.

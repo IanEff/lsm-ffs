@@ -8,9 +8,13 @@ import (
 	"github.com/ianeff/lsm-ffs/internal/wal"
 )
 
+const (
+	memtableMaxBytesForTest = 16
+)
+
 func TestMemtable_ByteKeysAndAccounting(t *testing.T) {
 	t.Parallel()
-	m := memtable.New()
+	m := memtable.New(memtableMaxBytesForTest)
 	key, value := []byte{0xff, 0}, []byte{1, 2, 3}
 	m.Put(key, memtable.Entry{Value: value})
 	key[0] = 0
@@ -48,7 +52,7 @@ func TestMemtable_ByteKeysAndAccounting(t *testing.T) {
 
 func TestGet_ReturnsFalseForMissingKey(t *testing.T) {
 	t.Parallel()
-	m := memtable.New()
+	m := memtable.New(memtableMaxBytesForTest)
 	m.Put([]byte("a"), memtable.Entry{Value: []byte("1")})
 
 	if e, ok := m.Get([]byte("b")); ok {
@@ -58,7 +62,7 @@ func TestGet_ReturnsFalseForMissingKey(t *testing.T) {
 
 func TestPut_ValueReplacesTombstone(t *testing.T) {
 	t.Parallel()
-	m := memtable.New()
+	m := memtable.New(memtableMaxBytesForTest)
 
 	m.Put([]byte("a"), memtable.Entry{Tombstone: true})
 	m.Put([]byte("a"), memtable.Entry{Value: []byte("1")})
@@ -70,7 +74,7 @@ func TestPut_ValueReplacesTombstone(t *testing.T) {
 
 func TestApply_ReturnsErrorForUnknownOp(t *testing.T) {
 	t.Parallel()
-	m := memtable.New()
+	m := memtable.New(memtableMaxBytesForTest)
 
 	err := m.Apply(wal.Record{Op: "BOGUS", Key: []byte("a"), Value: []byte("1")})
 	if err == nil {

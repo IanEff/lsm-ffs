@@ -17,8 +17,8 @@ type Memtable struct {
 }
 
 // New returns an empty memtable.
-func New() *Memtable {
-	return &Memtable{data: NewSkipList()}
+func New(maxBytes int) *Memtable {
+	return &Memtable{data: NewSkipList(), maxBytes: maxBytes}
 }
 
 // Put stores e under key, replacing any earlier entry. It copies key and e.Value, so the caller may reuse
@@ -57,6 +57,14 @@ func (m *Memtable) Apply(rec wal.Record) error {
 // ApproximateSize returns the total length of keys and values held.
 func (m *Memtable) ApproximateSize() int {
 	return m.bytesUsed
+}
+
+func (m *Memtable) HasRoomForWrite(key, value []byte) bool {
+	// this is for a "soft flush threshold"-- it allows a bigger write than the table strictly holds
+	if m.bytesUsed == 0 {
+		return true
+	}
+	return len(key)+len(value) <= m.maxBytes-m.bytesUsed
 }
 
 // Entry is what a [Memtable] holds for a key: a value, or a tombstone marking the key deleted.
