@@ -22,10 +22,13 @@ var errClosed = errors.New("lsm: store is closed")
 // and allows empty keys and values.
 // The zero value is not usable: build with [Open].
 type Store struct {
-	mu       sync.RWMutex
-	memtable *memtable.Memtable
-	queue    []*memtable.Memtable
-	wal      *wal.WAL
+	mu        sync.RWMutex
+	memtables struct {
+		// pointer to the mutable memtable, which is also on our queue!
+		mutable *memtable.Memtable
+		queue   []*memtable.Memtable
+	}
+	wal *wal.WAL
 }
 
 // Open opens the store in dir, creating dir if needed, and replays its write-ahead log.
@@ -52,7 +55,10 @@ func Open(dir string) (*Store, error) {
 		return nil, err
 	}
 
-	return &Store{memtable: mem, wal: w}, nil
+	store := &Store{wal: w}
+	store.memtables.mutable = mem
+	store.memtables.queue = []*memtable.Memtable{mem}
+	return store, nil
 }
 
 // Get returns a copy of a key's value, or nil and false if the key isn't present.
@@ -61,12 +67,20 @@ func (db *Store) Get(key []byte) ([]byte, bool) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
-	e, ok := db.memtable.Get(key)
-	if !ok {
-		return nil, false // TODO: check segments, newest first
+	for i := len(db.memtables.queue) - 1; i >= 0; i-- {
+		if e, ok := db.memtables.queue[i].Get(key); ok {
+			return entryValue(e)
+		}
 	}
+
+	return nil, false // TODO: check segments, newest first
+}
+
+// entryValue turns the newest entry found for a key into Get's result. A tombstone means deleted: stop
+// looking, even if an older table has the key.
+func entryValue(e memtable.Entry) ([]byte, bool) {
 	if e.Tombstone {
-		return nil, false // deleted: stop looking, even if a segment has it
+		return nil, false
 	}
 	return bytes.Clone(e.Value), true
 }
@@ -84,17 +98,17 @@ func (db *Store) Set(key, value []byte) error {
 	if err != nil {
 		return err
 	}
-	if !db.memtable.HasRoomForWrite(key, value) {
+	if !db.memtables.mutable.HasRoomForWrite(key, value) {
 		db.rotateMemtables()
 	}
-	db.memtable.Put(key, memtable.Entry{Value: value})
+	db.memtables.mutable.Put(key, memtable.Entry{Value: value})
 	return nil
 }
 
 func (db *Store) rotateMemtables() *memtable.Memtable {
-	db.queue = append(db.queue, db.memtable)
-	db.memtable = memtable.New(memtableBytes)
-	return db.memtable
+	db.memtables.mutable = memtable.New(memtableBytes)
+	db.memtables.queue = append(db.memtables.queue, db.memtables.mutable)
+	return db.memtables.mutable
 }
 
 // Close closes the store's write-ahead log. It's safe to call more than once; Set fails after the first.
