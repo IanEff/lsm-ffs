@@ -4,16 +4,20 @@ package lsm
 import (
 	"bytes"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
 
 	"github.com/ianeff/lsm-ffs/internal/memtable"
+	"github.com/ianeff/lsm-ffs/internal/sstable"
+	"github.com/ianeff/lsm-ffs/internal/storage"
 	"github.com/ianeff/lsm-ffs/internal/wal"
 )
 
 const (
-	memtableBytes = 16
+	memtableBytes          = 16
+	memtableFlushThreshold = 8 << 10 // 8 KiB
 )
 
 var errClosed = errors.New("lsm: store is closed")
@@ -28,7 +32,9 @@ type Store struct {
 		mutable *memtable.Memtable
 		queue   []*memtable.Memtable
 	}
-	wal *wal.WAL
+	wal         *wal.WAL
+	dataStorage *storage.Provider
+	sstables    []*storage.FileMetadata
 }
 
 // Open opens the store in dir, creating dir if needed, and replays its write-ahead log.
@@ -55,9 +61,15 @@ func Open(dir string) (*Store, error) {
 		return nil, err
 	}
 
+	dataStorage, err := storage.NewProvider(path)
+	if err != nil {
+		return nil, err
+	}
+
 	store := &Store{wal: w}
 	store.memtables.mutable = mem
 	store.memtables.queue = []*memtable.Memtable{mem}
+	store.dataStorage = dataStorage
 	return store, nil
 }
 
@@ -69,8 +81,24 @@ func (db *Store) Get(key []byte) ([]byte, bool) {
 
 	for i := len(db.memtables.queue) - 1; i >= 0; i-- {
 		if e, ok := db.memtables.queue[i].Get(key); ok {
+			if e.Tombstone {
+				return nil, false
+			}
 			return entryValue(e)
 		}
+	}
+
+	for j := len(db.sstables) - 1; j >= 0; j-- {
+		meta := db.sstables[j]
+		f, err := db.dataStorage.OpenFileForReading(meta)
+		if err != nil {
+			return nil, err
+		}
+		r := sstable.NewReader(f)
+		defer r.Close()
+
+		var entry *memtable.Entry
+		entry , err = r.Get(key)
 	}
 
 	return nil, false // TODO: check segments, newest first
@@ -105,10 +133,63 @@ func (db *Store) Set(key, value []byte) error {
 	return nil
 }
 
+func (db *Store) Delete(key []byte) bool {
+	m := db.memtables.mutable
+
+	if !m.HasRoomForWrite(key, nil) {
+		m = db.rotateMemtables()
+	}
+	m.PutTombstone(key)
+	return true
+}
+
 func (db *Store) rotateMemtables() *memtable.Memtable {
 	db.memtables.mutable = memtable.New(memtableBytes)
 	db.memtables.queue = append(db.memtables.queue, db.memtables.mutable)
 	return db.memtables.mutable
+}
+
+func (db *Store) maybeScheduleFlush() {
+	var totalSize int
+
+	for i := 0; i < len(db.memtables.queue); i++ {
+		totalSize += db.memtables.queue[i].ApproximateSize()
+	}
+
+	if totalSize <= memtableFlushThreshold {
+		return
+	}
+
+	err := db.flushMemtables()
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (db *Store) flushMemtables() error {
+	n := len(db.memtables.queue) - 1
+	flushable := db.memtables.queue[:n]
+	db.memtables.queue = db.memtables.queue[n:]
+
+	for i := 0; i < len(flushable); i++ {
+		meta := db.dataStorage.PrepareNewFile()
+		f, err := db.dataStorage.OpenFileForWriting(meta)
+		if err != nil {
+			return err
+		}
+
+		w := sstable.NewWriter(f)
+		err = w.Process(flushable[i])
+		if err != nil {
+			return err
+		}
+		err = w.Close()
+		if err != nil {
+			return err
+		}
+		db.sstables = append(db.sstables, meta)
+	}
+	return nil
 }
 
 // Close closes the store's write-ahead log. It's safe to call more than once; Set fails after the first.

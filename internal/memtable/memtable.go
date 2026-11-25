@@ -3,6 +3,7 @@ package memtable
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
 	"github.com/ianeff/lsm-ffs/internal/wal"
@@ -29,10 +30,20 @@ func (m *Memtable) Put(key []byte, e Entry) {
 	} else {
 		m.bytesUsed += len(key)
 	}
-	m.bytesUsed += len(e.Value)
 
 	e.Value = bytes.Clone(e.Value)
 	m.data.Insert(bytes.Clone(key), e)
+	m.bytesUsed += len(e.Value)
+}
+
+func (m *Memtable) PutTombstone(key []byte) {
+	if old, ok := m.data.Find(key); ok {
+		m.bytesUsed -= len(old.Value)
+	} else {
+		m.bytesUsed += len(key)
+	}
+	m.data.Insert(bytes.Clone(key), Entry{Tombstone: true})
+	m.bytesUsed += 1
 }
 
 // Get returns key's entry, tombstone included, so the caller can tell "deleted here" from "not here".
@@ -67,8 +78,34 @@ func (m *Memtable) HasRoomForWrite(key, value []byte) bool {
 	return len(key)+len(value) <= m.maxBytes-m.bytesUsed
 }
 
+func (m *Memtable) Iterator() *Iterator {
+	return m.data.Iterator()
+}
+
 // Entry is what a [Memtable] holds for a key: a value, or a tombstone marking the key deleted.
 type Entry struct {
 	Value     []byte
 	Tombstone bool
 }
+
+type opKind byte
+
+const (
+	opDelete opKind = 0x00
+	opSet    opKind = 0x01
+)
+
+func DecodeEntry(b []byte) (Entry, error) {
+	if len(b) == 0 {
+		return Entry{}, errors.New("memtable: empty encoded entry")
+	}
+	switch opKind(b[0]) {
+	case opDelete:
+		return Entry{Tombstone: true}, nil
+	case opSet:
+		return Entry{Value: bytes.Clone(b[1:])}, nil
+	default:
+		return Entry{}, fmt.Errorf("memtable: unknown op byte %#x", b[0])
+	}
+}
+

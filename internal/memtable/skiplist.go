@@ -123,6 +123,10 @@ func (sl *SkipList) shrink() {
 	}
 }
 
+func (sl *SkipList) Iterator() *Iterator {
+	return &Iterator{sl.head}
+}
+
 func init() {
 	probability := 1.0
 
@@ -143,4 +147,24 @@ func randomHeight() int {
 	}
 
 	return height
+}
+
+type Iterator struct {
+	current *node
+}
+
+func (i *Iterator) HasNext() bool {
+	return i.current.tower[0] != nil
+}
+
+func (i *Iterator) Next() ([]byte, Entry) {
+	i.current = i.current.tower[0]
+
+	if i.current == nil {
+		return nil, Entry{}
+	}
+	if i.current.entry.Tombstone {
+		return nil, Entry{}
+	}
+	return i.current.key, i.current.entry
 }
