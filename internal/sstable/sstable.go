@@ -34,7 +34,7 @@ func (w *Writer) Process(m *memtable.Memtable) error {
 	i := m.Iterator()
 	for i.HasNext() {
 		key, entry := i.Next()
-		err := w.writeDataBlock(key, entry)
+		err := w.writeDataBlock(key, entry.Encode())
 		if err != nil {
 			return err
 		}
@@ -99,7 +99,7 @@ func (r *Reader) Get(searchKey []byte) (memtable.Entry, error) {
 			if err == io.EOF {
 				break
 			}
-			return nil, err
+			return memtable.Entry{}, err
 		}
 
 		keyLen := binary.LittleEndian.Uint16(buf[:2])
@@ -109,16 +109,20 @@ func (r *Reader) Get(searchKey []byte) (memtable.Entry, error) {
 		buf = r.buf[:needed]
 		_, err = io.ReadFull(r.br, buf)
 		if err != nil {
-			return nil, err
+			return memtable.Entry{}, err
 		}
 		key := buf[:keyLen]
 		val := buf[keyLen:]
 
 		if bytes.Compare(searchKey, key) == 0 {
-			return val, nil
+			value, err := memtable.DecodeEntry(val)
+			if err != nil {
+				return memtable.Entry{}, err
+			}
+			return value, nil
 		}
 	}
-	return nil, ErrKeyNotFound
+	return memtable.Entry{}, ErrKeyNotFound
 }
 
 func (r *Reader) Close() error {
@@ -127,6 +131,6 @@ func (r *Reader) Close() error {
 		return err
 	}
 	r.file = nil
-	r.br - nil
+	r.br = nil
 	return nil
 }

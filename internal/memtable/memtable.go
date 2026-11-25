@@ -88,11 +88,20 @@ type Entry struct {
 	Tombstone bool
 }
 
+func (e Entry) Encode() []byte {
+	if e.Tombstone {
+		return []byte{byte(OpDelete)}
+	}
+	b := make([]byte, 0, 1+len(e.Value))
+	b = append(b, byte(OpSet))
+	return append(b, e.Value...)
+}
+
 type opKind byte
 
 const (
-	opDelete opKind = 0x00
-	opSet    opKind = 0x01
+	OpDelete opKind = 0x00
+	OpSet    opKind = 0x01
 )
 
 func DecodeEntry(b []byte) (Entry, error) {
@@ -100,12 +109,11 @@ func DecodeEntry(b []byte) (Entry, error) {
 		return Entry{}, errors.New("memtable: empty encoded entry")
 	}
 	switch opKind(b[0]) {
-	case opDelete:
+	case OpDelete:
 		return Entry{Tombstone: true}, nil
-	case opSet:
+	case OpSet:
 		return Entry{Value: bytes.Clone(b[1:])}, nil
 	default:
 		return Entry{}, fmt.Errorf("memtable: unknown op byte %#x", b[0])
 	}
 }
-
