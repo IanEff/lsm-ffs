@@ -92,13 +92,19 @@ func (db *Store) Get(key []byte) ([]byte, bool) {
 		meta := db.sstables[j]
 		f, err := db.dataStorage.OpenFileForReading(meta)
 		if err != nil {
-			return nil, err
+			return nil, false
 		}
 		r := sstable.NewReader(f)
 		defer r.Close()
 
-		var entry *memtable.Entry
-		entry , err = r.Get(key)
+		entry, err := r.Get(key)
+		if errors.Is(err, sstable.ErrKeyNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, false
+		}
+		return entryValue(entry)
 	}
 
 	return nil, false // TODO: check segments, newest first
